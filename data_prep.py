@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Tues Oct 8 10:50 2019
-
-@author: khayes847
-
-Collected functions for data cleaning.
+Module gathers and prepares data analysis
 """
 import re
 # pylint: disable=unused-import
@@ -17,28 +13,21 @@ import functions as f
 
 
 # pylint: disable=unnecessary-lambda
-def change(data):
-    """Drops unnecessary columns, alters data labels"""
+def annotated(data):
+    """Drops non-annotated data"""
     data = data.loc[~(data.asian.isna())]
     data = data.loc[~(data.comment_text.isna())]
-    data = data.drop(columns=['parent_id', 'article_id', 'created_date',
-                              'publication_id'])
-    data = data.rename(columns={'rating': 'cc_rejected', 'funny': 'cc_funny',
-                                'wow': 'cc_wow', 'sad': 'cc_sad', 'likes':
-                                'cc_likes', 'disagree': 'cc_disagree',
-                                'identity_annotator_count':
-                                'cc_identity_annotator_count',
-                                'toxicity_annotator_count':
-                                'cc_toxicity_annotator_count'})
-    data['cc_rejected'] = (data['cc_rejected'].replace({'approved': 0,
-                                                        'rejected': 1}))
     return data
 
 
 def target_grouping(row):
-    """Changes target based on grouping"""
+    """Creates new target incorporating identities.
+    '0': no identities, inoffensive.
+    '1': at least one identity, inoffensive.
+    '2': no identities, offensive.
+    '3': at least one identity, offensive."""
     val = 0
-    if row['no_group'] == 1:
+    if row['groups'] == 0:
         if row['target'] == 0:
             val = 0
             return val
@@ -52,35 +41,41 @@ def target_grouping(row):
 
 
 def identities(data):
-    """Categorizes whether identity is mentioned in a comment, and
-    whether it is offensive"""
+    """Categorizes whether an identity is mentioned in each comment.
+    Each 'identity_list' column refers a specific identity group, with each
+    value representing the percentage of annotators believing the comment
+    to refer to the identity group. Function categorizes values >= 0.15 as
+    positive identification, and classifies comments based on whether any
+    identity groups have been positively identified."""
     identity_list = list((data.iloc[:, 8:32]).columns)
     for iden in identity_list:
         data[f'{iden}'] = data[iden].swifter.apply(lambda x: x if x >= 0.15
                                                    else 0)
     data['groups'] = data[identity_list].sum(axis=1)
-    data['no_group'] = data.groups.swifter.apply(lambda x: 1 if x == 0
-                                                 else 0)
-    data['max_group'] = data[identity_list].idxmax(axis=1)
-    data_no = data.loc[data.no_group == 1]
-    data_yes = data.loc[data.no_group == 0]
-    data_no['max_group'] = 'none'
-    data = pd.concat([data_no, data_yes], ignore_index=False)
-    data['target'] = data.target.swifter.apply(lambda x: 1 if x >= .5 else 0)
-    data['target_new'] = data.swifter.apply(lambda row:
-                                            target_grouping(row), axis=1)
+    data['groups'] = data.groups.swifter.apply(lambda x: 0 if x == 0 else 1)
+    data = data.drop(columns=identity_list)
     return data
 
 
-def reorder(data):
-    """Reorders data columns"""
-    col_list = ['id', 'target', 'target_new', 'cc_rejected',
-                'cc_toxicity_annotator_count', 'cc_identity_annotator_count',
-                'cc_likes', 'cc_disagree', 'cc_funny', 'cc_sad', 'cc_wow',
-                'comment_text', 'severe_toxicity', 'obscene',
-                'identity_attack', 'insult', 'threat', 'sexual_explicit',
-                'max_group']
-    data = data[col_list]
+def target_cols(data):
+    """Categorizes whether target is offensive. 'Target' column refers to
+    percentage of annotators that found the comment at least mildly offensive.
+    Function categorizes values >= 0.5 as offensive. Function also creates
+    second target group describing both comment offensiveness and whether
+    comment refers to an identity group."""
+    data['target'] = data.target.swifter.apply(lambda x: 1 if x >= .5 else 0)
+    data['offensive_and_identity'] = data.swifter.apply(lambda row:
+                                                        target_grouping(row),
+                                                        axis=1)
+    data = data.rename(columns={'target': 'offensive'})
+    data = data.reset_index(drop=True)
+    data = data.drop(columns=['groups'])
+    return data
+
+
+def column_change(data):
+    """Removes unnecessary columns"""
+    data = data['comment_text']
     return data
 
 
@@ -90,127 +85,93 @@ def comments_obscene(data):
                                                               x.lower())
     data['comment_text'] = data['comment_text'].str.replace(r'a\*\*\*\*\*e',
                                                             'asshole')
-    data['comment_text'] = data['comment_text'].str.replace(r'a\*\*', 'ass')
-    data['comment_text'] = data['comment_text'].str.replace(r'A\*\*', 'ASS')
-    data['comment_text'] = data['comment_text'].str.replace(r'sh\*t', 'shit')
-    data['comment_text'] = data['comment_text'].str.replace(r'Sh\*t', 'Shit')
-    data['comment_text'] = data['comment_text'].str.replace(r'SH\*T', 'SHIT')
-    data['comment_text'] = data['comment_text'].str.replace(r'b\*tch', 'bitch')
-    data['comment_text'] = data['comment_text'].str.replace(r'B\*tch', 'Bitch')
-    data['comment_text'] = data['comment_text'].str.replace(r'B\*TCH', 'BITCH')
-    data['comment_text'] = data['comment_text'].str.replace(r'f\*ck', 'fuck')
-    data['comment_text'] = data['comment_text'].str.replace(r'F\*ck', 'Fuck')
-    data['comment_text'] = data['comment_text'].str.replace(r'F\*CK', 'FUCK')
-    data['comment_text'] = data['comment_text'].str.replace(r'f\*ggot',
-                                                            'faggot')
-    data['comment_text'] = data['comment_text'].str.replace(r'F\*ggot',
-                                                            'Faggot')
-    data['comment_text'] = data['comment_text'].str.replace(r'sl\*t', 'slut')
-    data['comment_text'] = data['comment_text'].str.replace(r'Sl\*t', 'Slut')
-    data['comment_text'] = data['comment_text'].str.replace(r'pr\*ck', 'prick')
-    data['comment_text'] = data['comment_text'].str.replace(r'Pr\*ck', 'Prick')
-    data['comment_text'] = data['comment_text'].str.replace(r'p\*ssy', 'pussy')
-    data['comment_text'] = data['comment_text'].str.replace(r'P\*ssy', 'Pussy')
-    data['comment_text'] = data['comment_text'].str.replace(r'P\*SSY', 'PUSSY')
-    data['comment_text'] = (data['comment_text'].str.replace
-                            (r'pu\$\$y', 'pussy'))
-    data['comment_text'] = (data['comment_text'].str.replace
-                            (r'Pu\$\$y', 'Pussy'))
-    data['comment_text'] = (data['comment_text'].str.replace
-                            (r'PU\$\$Y', 'PUSSY'))
     data['comment_text'] = (data['comment_text'].str.replace
                             (r'a\$\$hole', 'asshole'))
     data['comment_text'] = (data['comment_text'].str.replace
-                            (r'A\$\$hole', 'Asshole'))
+                            (' ahole ', ' asshole '))
+    data['comment_text'] = data['comment_text'].str.replace(r'a\*\*', 'ass')
+    data['comment_text'] = data['comment_text'].str.replace(r'a\$\$', 'ass')
+    data['comment_text'] = data['comment_text'].str.replace(r'sh\*t', 'shit')
+    data['comment_text'] = data['comment_text'].str.replace(r's\*it', 'shit')
+    data['comment_text'] = data['comment_text'].str.replace(r'\*hit', 'shit')
+    data['comment_text'] = data['comment_text'].str.replace(r'\$hit', 'shit')
+    data['comment_text'] = data['comment_text'].str.replace(r'sh\*\*\*\*ss',
+                                                            'shitless')
     data['comment_text'] = (data['comment_text'].str.replace
-                            (r'A\$\$HOLE', 'ASSHOLE'))
+                            (r'bull \(sh\*\*\*er\)', 'bullshitter'))
     data['comment_text'] = (data['comment_text'].str.replace
-                            (r'a\$\$', 'ass'))
+                            (r'b\*\*\*\*\*\*\*', 'bullshit'))
     data['comment_text'] = (data['comment_text'].str.replace
-                            (r'A\$\$', 'ASS'))
-    data['comment_text'] = (data['comment_text'].str.replace
-                            (r'du\*b', 'dumb'))
+                            (r'b\*\*\*\*\*\*t', 'bullshit'))
+    data['comment_text'] = data['comment_text'].str.replace(r'sh\*\*\*er',
+                                                            'shitter')
+    data['comment_text'] = data['comment_text'].str.replace(r'sh\*\*t', 'shit')
+    data['comment_text'] = data['comment_text'].str.replace(r' s\-\-t',
+                                                            ' shit')
+    data['comment_text'] = data['comment_text'].str.replace(r'sh\*\*', 'shit')
+    data['comment_text'] = data['comment_text'].str.replace(r's\*\*t', 'shit')
+    data['comment_text'] = data['comment_text'].str.replace(r's\*\*\*', 'shit')
+    data['comment_text'] = data['comment_text'].str.replace(r'b\*tch', 'bitch')
+    data['comment_text'] = data['comment_text'].str.replace(r'bit\*h', 'bitch')
+    data['comment_text'] = data['comment_text'].str.replace(r'f\*ck', 'fuck')
     data['comment_text'] = (data['comment_text'].str.replace
                             (r'f\*\*\*\*\*g', 'fucking'))
-    data['comment_text'] = (data['comment_text'].str.replace
-                            (r'm\*\*\*\*m', 'muslim'))
     data['comment_text'] = (data['comment_text'].str.replace
                             (r'f\*\*\*\*d', 'fucked'))
     data['comment_text'] = (data['comment_text'].str.replace
                             (r'f\*\*\*\*\*\*', 'fucking'))
-    data['comment_text'] = (data['comment_text'].str.replace
-                            (r'F\*\*\*\*\*\*', 'Fucking'))
     data['comment_text'] = data['comment_text'].str.replace(r'f\*\*\*', 'fuck')
-    data['comment_text'] = data['comment_text'].str.replace(r'F\*\*\*', 'Fuck')
-    data['comment_text'] = (data['comment_text'].swifter.apply
-                            (lambda x: x.lower()))
+    data['comment_text'] = data['comment_text'].str.replace(r'f\-\-\-\-\-g',
+                                                            'fucking')
+    data['comment_text'] = data['comment_text'].str.replace(r'f\*\*k', 'fuck')
+    data['comment_text'] = data['comment_text'].str.replace(r'p\*ssy', 'pussy')
+    data['comment_text'] = (data['comment_text'].str.replace
+                            (r'pu\$\$y', 'pussy'))
+    data['comment_text'] = (data['comment_text'].str.replace
+                            (r'pu\#\#y', 'pussy'))
     return data
 
 
 def comments_obscene2(data):
     """Cleans words with punctuation obscuring obscenity"""
-    data['comment_text'] = data['comment_text'].swifter.apply(lambda x:
-                                                              x.lower())
-    data['comment_text'] = (data['comment_text'].str.replace
-                            (r'b\*\*\*\*\*\*\*', 'bullshit'))
-    data['comment_text'] = (data['comment_text'].str.replace
-                            (r'b\*\*\*\*\*\*t', 'bullshit'))
-    data['comment_text'] = (data['comment_text'].str.replace
-                            (r'B\*\*\*\*\*\*T', 'BULLSHIT'))
     data['comment_text'] = (data['comment_text'].str.replace
                             (r'n\*gger', 'nigger'))
     data['comment_text'] = (data['comment_text'].str.replace
                             (r' n\*\*\*\*\*', ' nigger'))
     data['comment_text'] = (data['comment_text'].str.replace
-                            (r' N\*\*\*\*\*', ' Nigger'))
-    data['comment_text'] = data['comment_text'].str.replace(r'g\*y', 'gay')
+                            (r'nigg\*r', 'nigger'))
+    data['comment_text'] = data['comment_text'].str.replace(r'f\*ggot',
+                                                            'faggot')
     data['comment_text'] = (data['comment_text'].str.replace
                             (r'f\@gg0t', 'faggot'))
     data['comment_text'] = data['comment_text'].str.replace(r'f\@g', 'fag')
-    data['comment_text'] = (data['comment_text'].str.replace
-                            (' ahole ', ' asshole '))
-    data['comment_text'] = (data['comment_text'].str.replace
-                            (' Ahole ', ' Asshole '))
-    data['comment_text'] = (data['comment_text'].str.replace
-                            (' AHOLE ', ' ASSHOLE '))
-    data['comment_text'] = data['comment_text'].str.replace('http', '')
-    data['comment_text'] = data['comment_text'].str.replace('HTTP', '')
-    data['comment_text'] = data['comment_text'].str.replace('Http', '')
-    data['comment_text'] = data['comment_text'].str.replace(r'f\*\*k', 'fuck')
-    data['comment_text'] = data['comment_text'].str.replace(r'F\*\*k', 'Fuck')
-    data['comment_text'] = data['comment_text'].str.replace(r'F\*\*K', 'FUCK')
     data['comment_text'] = data['comment_text'].str.replace(r'h\*\*l', 'hell')
-    data['comment_text'] = data['comment_text'].str.replace(r'H\*\*L', 'HELL')
     data['comment_text'] = data['comment_text'].str.replace(r'h\*ll', 'hell')
-    data['comment_text'] = data['comment_text'].str.replace(r'H\*LL', 'HELL')
-    data['comment_text'] = (data['comment_text'].str.replace
-                            (r'He\*l H\*tler', 'Heil Hitler'))
-    data['comment_text'] = data['comment_text'].str.replace(r's\*\*\*', 'shit')
-    data['comment_text'] = data['comment_text'].str.replace(r'S\*\*\*', 'Shit')
-    data['comment_text'] = data['comment_text'].str.replace(r's\*\*t', 'shit')
-    data['comment_text'] = data['comment_text'].str.replace(r'S\*\*t', 'Shit')
-    data['comment_text'] = data['comment_text'].str.replace(r'S\*\*T', 'SHIT')
-    data['comment_text'] = data['comment_text'].str.replace(r'an\*l', 'anal')
-    data['comment_text'] = data['comment_text'].str.replace(r's\*x', 'sex')
-    data['comment_text'] = data['comment_text'].str.replace(r'S\*x', 'Sex')
     data['comment_text'] = data['comment_text'].str.replace(r'c\*nt', 'cunt')
-    data['comment_text'] = data['comment_text'].str.replace(r'C\*nt', 'cunt')
-    data['comment_text'] = data['comment_text'].str.replace(r'tw\*t', 'twat')
-    data['comment_text'] = data['comment_text'].str.replace(r'Tw\*t', 'Twat')
-    data['comment_text'] = data['comment_text'].str.replace(r'wh\*re', 'whore')
-    data['comment_text'] = data['comment_text'].str.replace(r'Wh\*re', 'Whore')
-    data['comment_text'] = (data['comment_text'].str.replace
-                            (r'nigg\*r', 'nigger'))
     data['comment_text'] = data['comment_text'].str.replace(r'c\*unt', 'cunt')
+    data['comment_text'] = data['comment_text'].str.replace(r'd\*\*\*\*\*\*',
+                                                            'damned')
+    data['comment_text'] = data['comment_text'].str.replace(r'sl\*t', 'slut')
+    data['comment_text'] = data['comment_text'].str.replace(r'tw\*t', 'twat')
+    data['comment_text'] = data['comment_text'].str.replace(r'wh\*re', 'whore')
+    data['comment_text'] = data['comment_text'].str.replace(r'g\*y', 'gay')
+    data['comment_text'] = data['comment_text'].str.replace(r'pr\*ck', 'prick')
     data['comment_text'] = (data['comment_text'].str.replace
-                            (r'pu\#\#y', 'pussy'))
-    data['comment_text'] = (data['comment_text'].swifter.apply
-                            (lambda x: x.lower()))
+                            (r'he\*l h\*tler', 'heil hitler'))
+    data['comment_text'] = data['comment_text'].str.replace(r's\*x', 'sex')
+    data['comment_text'] = data['comment_text'].str.replace(r'an\*l', 'anal')
+    data['comment_text'] = (data['comment_text'].str.replace
+                            (r'du\*b', 'dumb'))
+    data['comment_text'] = (data['comment_text'].str.replace
+                            (r'm\*\*\*\*m', 'muslim'))
+    data['comment_text'] = data['comment_text'].str.replace(r'mex\*\*\*\*',
+                                                            'mexican')
     return data
 
 
 def clean_punct(data):
-    """Removes non-stopping punctuation"""
+    """Removes non-stopping punctuation, puts space between
+    stopping punct"""
     punct_list = [r'\-', r'\_', r"\'", r'\\', r'\/', r'\,', r'\*', r"\:",
                   r"\;", r"\(", r"\)", r"\{", r"\}", r"\[", r"\]", r"\|",
                   r"\<", r"\>", r"\#", r"\@", r'\%', r'\^', r'\+', r'\=',
@@ -224,9 +185,7 @@ def punct_space(data):
     """Puts space between stopping punctuation and letters"""
     alphabet = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k',
                 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v',
-                'w', 'x', 'y', 'z', 'A', 'B', 'C', 'D', 'E', 'F', 'G',
-                'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
-                'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
+                'w', 'x', 'y', 'z']
     punct_list = [r'\.', r'\?', r'\!']
     for punct in punct_list:
         for let in alphabet:
@@ -348,6 +307,10 @@ def misspelled(x_list):
             newlist.append('sexting')
         elif x_val == 'licemse':
             newlist.append('license')
+        elif x_val == 'http':
+            newlist.append('')
+        elif x_val == 'ww':
+            newlist.append('')
         else:
             newlist.append(x_val)
     return newlist
@@ -414,26 +377,36 @@ def corrections(data):
     return data
 
 
-def clean():
-    """Performs data cleaning functions and splits data into
-    smaller datasets"""
-    data = f.open_s3('thisa', 'train_bias.csv')
+def clean1():
+    """Reduces overall dataset to the data with group
+    annotations, reduces memory usage, splits to target
+    and features."""
+    data = pd.read_csv('train_bias.csv')
     data = f.reduce_mem_usage(data)
-    data = change(data)
+    data = annotated(data)
     data = identities(data)
-    data = reorder(data)
-    data = comments_obscene(data)
-    data = comments_obscene2(data)
-    data = clean_punct(data)
-    data = punct_space(data)
-    data = whitespace(data)
-    data = tokenize(data)
-    data = rejoin(data)
-    data = replace_halfwords(data)
-    data = tokenize(data)
-    data = corrections(data)
-    data = rejoin(data)
-    data = whitespace(data)
-    data.to_csv('data_cleaned.csv', index=False)
-    f.upload_s3('data_cleaned.csv', 'thisa', 'data_cleaned.csv')
-    return data
+    data = target_cols(data)
+    target = data[['offensive', 'offensive_and_identity']]
+    target.to_csv('target.csv', index=False)
+    features = data.drop(columns=['offensive', 'offensive_and_identity'])
+    return features, target
+
+
+def clean():
+    """Cleans comments for tokenizing"""
+    features, target = clean1()
+    features = column_change(features)
+    features = comments_obscene(features)
+    features = comments_obscene2(features)
+    features = clean_punct(features)
+    features = punct_space(features)
+    features = whitespace(features)
+    features = tokenize(features)
+    features = rejoin(features)
+    features = replace_halfwords(features)
+    features = tokenize(features)
+    features = corrections(features)
+    features = rejoin(features)
+    features = whitespace(features)
+    features.to_csv('features.csv', index=False)
+    return features, target
