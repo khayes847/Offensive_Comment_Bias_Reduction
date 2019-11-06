@@ -75,7 +75,7 @@ def target_cols(data):
 
 def column_change(data):
     """Removes unnecessary columns"""
-    data = data['comment_text']
+    data = data[['comment_text']]
     return data
 
 
@@ -377,6 +377,21 @@ def corrections(data):
     return data
 
 
+def remove_nulls():
+    """Removes comments with null values after loading, updates data"""
+    features = pd.read_csv('features.csv')
+    target = pd.read_csv('target.csv')
+    data = pd.concat([target, features], axis=1)
+    data = data.loc[~(data.comment_text.isna())]
+    data = data.reset_index(drop=True)
+    features = data[['comment_text']]
+    features.to_csv('features.csv', index=False)
+    target = data.drop(columns=['comment_text'])
+    target = f.reduce_mem_usage(target)
+    target.to_csv('target.csv', index=False)
+    return features, target
+
+
 def clean1():
     """Reduces overall dataset to the data with group
     annotations, reduces memory usage, splits to target
@@ -389,12 +404,12 @@ def clean1():
     target = data[['offensive', 'offensive_and_identity']]
     target.to_csv('target.csv', index=False)
     features = data.drop(columns=['offensive', 'offensive_and_identity'])
-    return features, target
+    return features
 
 
 def clean():
     """Cleans comments for tokenizing"""
-    features, target = clean1()
+    features = clean1()
     features = column_change(features)
     features = comments_obscene(features)
     features = comments_obscene2(features)
@@ -409,4 +424,5 @@ def clean():
     features = rejoin(features)
     features = whitespace(features)
     features.to_csv('features.csv', index=False)
+    features, target = remove_nulls()
     return features, target

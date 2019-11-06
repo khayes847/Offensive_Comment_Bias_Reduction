@@ -11,22 +11,23 @@ import numpy as np
 # pylint: disable=unused-import
 import swifter
 # pylint: enable=unused-import
-from sklearn.model_selection import train_test_split
+import matplotlib.pyplot as plt
+import itertools
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.linear_model import LogisticRegression
 from sklearn.dummy import DummyClassifier
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 from sklearn.metrics import recall_score, precision_score
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.feature_extraction.text import CountVectorizer
 from yellowbrick.classifier import ConfusionMatrix
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-import boto3
-
-
-def open_s3(bucket, data_key):
-    """Pulls data from s3. Bucket is S3 name, key is file name"""
-    data_location = (f's3://{bucket}/{data_key}')
-    data = pd.read_csv(data_location)
-    return data
+import nltk
+from nltk.corpus import stopwords
+#nltk.download('wordnet')
+#nltk.download('punkt')
+#nltk.download('stopwords')
+from keras import backend as K
 
 
 def reduce_mem_usage(data):
@@ -78,166 +79,45 @@ def reduce_mem_usage(data):
     return data
 
 
-def upload_s3(file, bucket, s3_name):
-    """Uploads file to s3"""
-    s3_client = boto3.client('s3')
-    s3_client.upload_file(file, bucket, s3_name)
+def xyvalues():
+    """Returns X and y values for data"""
+    x_val = pd.read_csv('features.csv')
+    y_val = pd.read_csv('target.csv')
+    y_val = reduce_mem_usage(y_val)
+    return x_val, y_val
 
 
-def id_index(data):
-    """Sets index as id"""
-    data = data.set_index('id')
-    data = data.sort_index(axis=0)
-    return data
+def test_group(model, y_test, x_val, y_val, vectorize==True):
+    """Returns test section with group classification"""
+    x_val = x_val[x_val.index.isin(y_test.index)]
+    y_val = y_val[y_val.index.isin(y_test.index)]
+    data = pd.concat([y_val, x_val], axis=1)
+    data = data.loc[(data.offensive_and_identity==1)|
+                    (data.offensive_and_identity==3)]
+    x_group = data[['comment_text']]
+    y_group = data['offensive']
+    clean_group_data = []
+    for testdata in x_group['comment_text']:
+        clean_group_data.append(testdata)
+    if vectorize:
+        clean_group_data = model.transform(clean_group_data)
+    return clean_group_data, y_group 
 
 
-def id_column(data):
-    """Sets id as column"""
-    data = data.reset_index(drop=False)
-    return data
-
-
-def train_test(x_val, y_val, test=.25):
+def train_test(x_val, y_val, test=.33, rs=42):
     """Seperates values into train and test data"""
     x_train, x_test, y_train, y_test = train_test_split(x_val, y_val,
                                                         test_size=test,
-                                                        random_state=42,
+                                                        random_state=rs,
                                                         stratify=y_val)
     return x_train, x_test, y_train, y_test
 
 
-def initial():
-    """Provides initial confusion matrix based on
-    Civil Comments classification"""
-    data = pd.read_csv('data_cleaned.csv', index_col='id')
-    print('Overall')
-    print(f'Total: {len(data)}')
-    initial_cf(data)
-    print('\nOnly bias data')
-    print(f'Total: {len(data.loc[~(data.asian.isna())])}')
-    initial_cf(data.loc[~(data.asian.isna())])
-    print('\nBias data, no group')
-    print(f'Total: {len(data.loc[data.no_group==1])}')
-    initial_cf((data.loc[data.no_group == 1]))
-    print('\nBias data, group')
-    print(f'Total: {len(data.loc[data.no_group==0])}')
-    initial_cf((data.loc[data.no_group == 0]))
-
-
-def initial_cf(data):
-    """Produces initial accuracy scores"""
-    tp_val = len(data.loc[(data['target_binary'] == 1) &
-                          (data['cc_rejected'] == 1)])
-    fp_val = len(data.loc[(data['target_binary'] == 0) &
-                          (data['cc_rejected'] == 1)])
-    fn_val = len(data.loc[(data['target_binary'] == 1) &
-                          (data['cc_rejected'] == 0)])
-    tn_val = len(data.loc[(data['target_binary'] == 0) &
-                          (data['cc_rejected'] == 0)])
-    precision = tp_val/(tp_val+fp_val)
-    recall = tp_val/(tp_val+fn_val)
-    accuracy = (tp_val+fn_val)/len(data)
-    f1_val = 2*((precision*recall)/(precision+recall))
-    print(f'TP: {tp_val}, {tp_val/len(data)}')
-    print(f'FP: {fp_val}, {fp_val/len(data)}')
-    print(f'FN: {fn_val}, {fn_val/len(data)}')
-    print(f'TN: {tn_val}, {tn_val/len(data)}')
-    print(f'Precision: {precision}')
-    print(f'Recall: {recall}')
-    print(f'Accuracy: {accuracy}')
-    print(f'F1: {f1_val}')
-
-
-def min_max(x_train, x_test):
-    """Scales variables to min_max"""
-    scaler = MinMaxScaler(copy=False)
-    scaler.fit(x_train)
-    x_train = scaler.transform(x_train)
-    x_test = scaler.transform(x_test)
-    return x_train, x_test
-
-
 def scores(y_test, y_pred):
     """Returns precision, recall, accuracy, and F1."""
-    print('Test precision score: ', precision_score(y_test, y_pred))
-    print('Test Recall score: ', recall_score(y_test, y_pred))
     print('Test Accuracy score: ', accuracy_score(y_test, y_pred))
-    print('Test f1 score: ', f1_score(y_test, y_pred))
-
-
-def c_matrix(model, x_train, x_test, y_train, y_test):
-    """Creates confusion matrix"""
-    cm_model = ConfusionMatrix(model, classes=[0, 1])
-    cm_model.fit(x_train, y_train)
-    cm_model.score(x_test, y_test)
-    cm_model.poof()
-
-
-def dummy_classifier(x_train, x_test, y_train, y_test):
-    """Returns dummy classifier"""
-    print('Dummy')
-    y_train = y_train
-    y_test = y_test
-    dummy = DummyClassifier(strategy='most_frequent',
-                            random_state=42).fit(x_train, y_train)
-    y_pred = dummy.predict(x_test)
-    scores(y_test, y_pred)
-    c_matrix(dummy, x_train, x_test, y_train, y_test)
-
-
-def logreg(x_train, x_test, y_train, y_test):
-    """Returns logistic regression"""
-    print('Logreg')
-    logreg_new = LogisticRegression(fit_intercept=False, C=1e12,
-                                    solver='saga', random_state=42)
-    logreg_new.fit(x_train, y_train)
-    y_pred = logreg_new.predict(x_test)
-    scores(y_test, y_pred)
-    c_matrix(logreg_new, x_train, x_test, y_train, y_test)
-
-
-def cc_logreg():
-    """Runs preliminary analysis of cc relationship to target"""
-    col_list = ['id', 'target_binary', 'cc_rejected',
-                'cc_toxicity_annotator_count',
-                'cc_identity_annotator_count',
-                'cc_likes', 'cc_disagree', 'cc_funny',
-                'cc_sad', 'cc_wow']
-    data = pd.read_csv('data_cleaned.csv', usecols=col_list, index_col='id')
-    data = data.loc[data.asian.isna()]
-    x_val = data.drop(columns=['target_binary'])
-    y_val = data['target_binary']
-    x_train, x_test, y_train, y_test = train_test(x_val, y_val, test=.25)
-    xs_train, xs_test = min_max(x_train, x_test)
-    dummy_classifier(xs_train, xs_test, y_train, y_test)
-    logreg(xs_train, xs_test, y_train, y_test)
-
-
-def remove_cc(data):
-    """Removes cc columns from data"""
-    data = pd.read_csv('data_cleaned.csv', index_col='id')
-    data = data.drop(columns=['cc_rejected',
-                              'cc_toxicity_annotator_count',
-                              'cc_identity_annotator_count',
-                              'cc_likes', 'cc_disagree',
-                              'cc_funny', 'cc_sad', 'cc_wow'])
-    data = id_column(data)
-    data.to_csv('data_no_cc.csv', index=False)
-    targets = data[['id', 'target', 'target_binary', 'severe_toxicity',
-                    'obscene', 'identity_attack', 'insult', 'threat',
-                    'sexual_explicit']]
-    targets.to_csv('quora_targets.csv', index=False)
-    features = data.drop(columns=['target', 'target_binary',
-                                  'severe_toxicity',
-                                  'obscene',
-                                  'identity_attack',
-                                  'insult', 'threat',
-                                  'sexual_explicit'])
-    features.to_csv('quora_features.csv', index=False)
-    data_comments = features['comment_text']
-    data_comments.to_csv('quora_comments.csv', index=False)
-    data_identity = features.drop(columns=['comment_text'])
-    data_identity.to_csv('quora_identity.csv', index=False)
+    print('Test F1 score: ', f1_score(y_test, y_pred))
+    print('Test Cost Function Score: ', cost_function(y_test, y_pred))
 
 
 def vader(x_val, s_type):
@@ -254,3 +134,152 @@ def sentiment_initial(data):
                                 (lambda x:
                                  vader(x, 'compound')))
     return data
+
+
+def recall_k(y_true, y_pred):
+    """Creates custom recall measurement for Keras"""
+    true_positives = K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
+    possible_positives = K.sum(K.round(K.clip(y_true, 0, 1)))
+    recall = true_positives / (possible_positives + K.epsilon())
+    return recall
+
+
+def precision_k(y_true, y_pred):
+    """Creates custom precision measurement for Keras"""
+    true_positives = K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
+    predicted_positives = K.sum(K.round(K.clip(y_pred, 0, 1)))
+    precision = true_positives / (predicted_positives + K.epsilon())
+    return precision
+
+    
+def f1_k(y_true, y_pred):
+    """Creates custom F1 measurement for Keras"""
+    precision = precision_m(y_true, y_pred)
+    recall = recall_m(y_true, y_pred)
+    f1_val = 2*((precision*recall)/(precision+recall+K.epsilon()))
+    return f1_val
+
+
+def cost_function_k(y_true, y_pred):
+    """Creates custom cost function measurement for Keras"""
+    true_pos = K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
+    pred_pos = K.sum(K.round(K.clip(y_pred, 0, 1)))
+    total_pos = K.sum(K.round(K.clip(y_true, 0, 1)))
+    false_pos = pred_pos-true_pos
+    false_neg = total_pos-true_pos
+    true_neg = int((len(y_true))-(true_pos+false_pos+false_neg))
+    score = 0
+    score = (4*false_pos)+false_neg-(2*true_pos)-(0.0005*true_neg)
+    return score
+    
+
+def cost_function(y_true, y_pred):
+    """Creates score for custom cost function"""
+    pred_labels = np.asarray(y_pred)
+    true_labels = np.asarray(y_true)
+    true_pos = np.sum(np.logical_and(pred_labels == 1, true_labels == 1))
+    true_neg = np.sum(np.logical_and(pred_labels == 0, true_labels == 0))
+    false_pos = np.sum(np.logical_and(pred_labels == 1, true_labels == 0))
+    false_neg = np.sum(np.logical_and(pred_labels == 0, true_labels == 1))
+    score = 0
+    score = (4*false_pos)+false_neg-(2*true_pos)-(0.0005*true_neg)
+    return score
+
+
+def plot_confusion_matrix(cm, classes, normalize=False, title="Confusion Matrix"):
+    """Creates graph of confusion matrix"""
+    plt.grid(None)
+    plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+    plt.title(title)
+    plt.colorbar()
+    tick_marks = np.arange(len(classes))
+    plt.xticks(tick_marks, classes, rotation='45')
+    plt.yticks(tick_marks, classes)
+    if normalize:
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        print("Normalized confusion matrix")
+    else:
+        print('Confusion matrix, without normalization')
+    thresh = cm.max()/2
+    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+        plt.text(j,i, cm[i,j], horizontalalignment="center",
+                 color="white" if cm[i,j]>thresh else "black")
+    plt.tight_layout()
+    plt.ylabel('True \nlabel', rotation=0)
+    plt.xlabel('Predicted label')
+    plt.savefig('distribution.png')
+
+
+def visualize_training_results(results):
+    """Creates graph that visualizes loss and F1 score measurements at each
+    epoch during Keras modeling"""
+    history = results.history
+    plt.figure()
+    plt.plot(history['val_loss'])
+    plt.plot(history['loss'])
+    plt.legend(['val_loss', 'loss'])
+    plt.title('Loss')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.show()
+    
+    plt.figure()
+    plt.plot(history['val_f1_m'])
+    plt.plot(history['f1_m'])
+    plt.legend(['val_f1_m', 'f1_m'])
+    plt.title('F1 Scores')
+    plt.xlabel('Epochs')
+    plt.ylabel('F1 Scores')
+    plt.show()
+
+
+def vectorize_initial(x_train, x_test):
+    """Creates count vectorizer model, fits it to the X_train dataset, and
+    transforms the X train and test datasets."""
+    
+    stopwords_set = set(stopwords.words('english'))
+    
+    clean_train_data = []
+    for traindata in x_train['comment_text']:
+        clean_train_data.append(traindata)
+
+    clean_test_data = []
+    for testdata in x_test['comment_text']:
+        clean_test_data.append(testdata)
+    
+    vectorizer = CountVectorizer(analyzer="word",
+                                 tokenizer=None,
+                                 preprocessor=None,
+                                 stop_words=stopwords_set,
+                                 max_features=6000,
+                                 ngram_range=(1, 3))
+
+    train_features = vectorizer.fit_transform(clean_train_data)
+    test_features = vectorizer.transform(clean_test_data)
+    return vectorizer, train_features, test_features
+
+
+def log_gridsearch(train_features, y_train):
+    """Returns gridsearch result for Logistic Regression"""
+    textreg = LogisticRegression(fit_intercept = False, solver='saga', random_state=42)
+    C = [1,3,5,7,9]
+    hyperparameters = dict(C=C)
+    clf = GridSearchCV(textreg, hyperparameters, cv=3, n_jobs=-2)
+    best_model = clf.fit(train_features, y_train)
+    print('Best C:', best_model.best_estimator_.get_params()['C'])
+
+
+def logreg(train_features, y_train, c_val):
+    """Returns fitted logistic regression model"""
+    textreg = LogisticRegression(C=c_val, fit_intercept = False, solver='saga', random_state=42)
+    textreg.fit(train_features, y_train)
+    return textreg
+
+
+def logreg_cm(model, test_features, y_test, cm_labels):
+    """Predicts classification using model, creates confusion matrix"""
+    y_pred = model.predict(test_features)
+    cm_val = confusion_matrix(y_test, y_pred)
+    plot_confusion_matrix(cm_val, cm_labels)
+    scores(y_test, y_pred)
+    
