@@ -325,7 +325,6 @@ def prediction_keras(model, test, y_test):
 def confusion_keras(y_pred_classes, multi_label_test, binary=False):
     """Returns confusion matrix for Keras predictions"""
     cm_val = confusion_matrix(multi_label_test, y_pred_classes)
-    cm_labels = confusion_matrix(multi_label_test, y_pred_classes)
     if binary:
         cm_labels = ['Good', 'Bad']
     else:
