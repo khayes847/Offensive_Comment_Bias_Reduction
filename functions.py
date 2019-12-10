@@ -30,6 +30,8 @@ from keras.layers import Dense, Dropout, Activation
 # pylint: enable=unused-import
 
 
+
+
 def reduce_mem_usage(data):
     """
     iterate through all the columns of a dataframe and

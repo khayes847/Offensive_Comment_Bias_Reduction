@@ -1,7 +1,5 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-Module gathers and prepares data analysis
+Module gathers and prepares data for analysis.
 """
 import re
 # pylint: disable=unused-import
@@ -14,18 +12,30 @@ import functions as f
 
 # pylint: disable=unnecessary-lambda
 def annotated(data):
-    """Drops non-annotated data"""
+    """Drops non-annotated data."""
+
     data = data.loc[~(data.asian.isna())]
     data = data.loc[~(data.comment_text.isna())]
+    data = data.reset_index(drop=True)
     return data
 
 
 def target_grouping(row):
-    """Creates new target incorporating identities.
+    """
+    Creates new target incorporating identities.
+
     '0': no identities, inoffensive.
     '1': at least one identity, inoffensive.
     '2': no identities, offensive.
-    '3': at least one identity, offensive."""
+    '3': at least one identity, offensive.
+
+    Parameters:
+    row: individual datapoint.
+
+    Returns:
+    val (int): integer for use in updated target.
+    """
+
     val = 0
     if row['groups'] == 0:
         if row['target'] == 0:
@@ -41,12 +51,22 @@ def target_grouping(row):
 
 
 def identities(data):
-    """Categorizes whether an identity is mentioned in each comment.
+    """
+    Categorizes whether an identity is mentioned in each comment.
+
     Each 'identity_list' column refers a specific identity group, with each
     value representing the percentage of annotators believing the comment
     to refer to the identity group. Function categorizes values >= 0.15 as
     positive identification, and classifies comments based on whether any
-    identity groups have been positively identified."""
+    identity groups have been positively identified.
+
+    Parameters:
+    data: feature variable database.
+
+    Returns:
+    data: feature variable database with updated 'groups' feature.
+    """
+
     identity_list = list((data.iloc[:, 8:32]).columns)
     for iden in identity_list:
         data[f'{iden}'] = data[iden].swifter.apply(lambda x: x if x >= 0.15
@@ -58,29 +78,50 @@ def identities(data):
 
 
 def target_cols(data):
-    """Categorizes whether target is offensive. 'Target' column refers to
-    percentage of annotators that found the comment at least mildly offensive.
-    Function categorizes values >= 0.5 as offensive. Function also creates
-    second target group describing both comment offensiveness and whether
-    comment refers to an identity group."""
+    """
+    Categorizes whether target is offensive.
+
+    'Target' column refers to percentage of annotators that found
+    the comment at least mildly offensive. Function categorizes
+    values >= 0.5 as offensive. Function also creates second target group
+    describing both comment offensiveness and whether comment refers to
+    an identity group.
+
+    Parameters:
+    data: feature variable database.
+
+    Returns:
+    data: feature variable database with updated 'offensive_and_identity'
+          feature.
+    """
+
     data['target'] = data.target.swifter.apply(lambda x: 1 if x >= .5 else 0)
     data['offensive_and_identity'] = data.swifter.apply(lambda row:
                                                         target_grouping(row),
                                                         axis=1)
     data = data.rename(columns={'target': 'offensive'})
-    data = data.reset_index(drop=True)
     data = data.drop(columns=['groups'])
     return data
 
 
 def column_change(data):
-    """Removes unnecessary columns"""
+    """Removes unnecessary columns."""
+
     data = data[['comment_text']]
     return data
 
 
 def comments_obscene(data):
-    """Cleans words with punctuation obscuring obscenity"""
+    """
+    Cleans words with punctuation obscuring obscenity.
+
+    Parameters:
+    data: feature variable database.
+
+    Returns:
+    data: feature variable database with updated 'comment_text' feature.
+    """
+
     data['comment_text'] = data['comment_text'].swifter.apply(lambda x:
                                                               x.lower())
     data['comment_text'] = data['comment_text'].str.replace(r'a\*\*\*\*\*e',
@@ -133,7 +174,16 @@ def comments_obscene(data):
 
 
 def comments_obscene2(data):
-    """Cleans words with punctuation obscuring obscenity"""
+    """
+    Cleans words with punctuation obscuring obscenity.
+
+    Parameters:
+    data: feature variable database.
+
+    Returns:
+    data: feature variable database with updated 'comment_text' feature.
+    """
+
     data['comment_text'] = (data['comment_text'].str.replace
                             (r'n\*gger', 'nigger'))
     data['comment_text'] = (data['comment_text'].str.replace
@@ -170,8 +220,17 @@ def comments_obscene2(data):
 
 
 def clean_punct(data):
-    """Removes non-stopping punctuation, puts space between
-    stopping punct"""
+    """
+    Removes non-stopping punctuation, puts space between
+    stopping punctuation.
+
+    Parameters:
+    data: feature variable database.
+
+    Returns:
+    data: feature variable database with updated 'comment_text' feature.
+    """
+
     punct_list = [r'\-', r'\_', r"\'", r'\\', r'\/', r'\,', r'\*', r"\:",
                   r"\;", r"\(", r"\)", r"\{", r"\}", r"\[", r"\]", r"\|",
                   r"\<", r"\>", r"\#", r"\@", r'\%', r'\^', r'\+', r'\=',
@@ -182,7 +241,16 @@ def clean_punct(data):
 
 
 def punct_space(data):
-    """Puts space between stopping punctuation and letters"""
+    """
+    Puts space between stopping punctuation and letters.
+
+    Parameters:
+    data: feature variable database
+
+    Returns:
+    data: feature variable database with updated 'comment_text' feature.
+    """
+
     alphabet = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k',
                 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v',
                 'w', 'x', 'y', 'z']
@@ -195,7 +263,8 @@ def punct_space(data):
 
 
 def whitespace(data):
-    """Reduces whitespace in comments"""
+    """Reduces whitespace in comments."""
+
     i = 0
     while i <= 10:
         data['comment_text'] = data.comment_text.str.replace('  ', ' ')
@@ -204,7 +273,8 @@ def whitespace(data):
 
 
 def tokenize(data):
-    """Tokenizes data"""
+    """Tokenizes data."""
+
     word_tokenizer = RegexpTokenizer(r'\w+')
     data['comment_text'] = (data['comment_text'].swifter.apply
                             (lambda x: word_tokenizer.tokenize(x)))
@@ -212,14 +282,24 @@ def tokenize(data):
 
 
 def rejoin(data):
-    """Rejoins tokenized data"""
+    """Rejoins tokenized data."""
+
     data['comment_text'] = (data['comment_text'].swifter.apply
                             (lambda x: ' '.join(x)))
     return data
 
 
 def replace_halfwords(data):
-    """Replaces part words from tokenized words"""
+    """
+    Replaces part words from tokenized words.
+
+    Parameters:
+    data: feature variable database
+
+    Returns:
+    data: feature variable database with updated 'comment_text' feature.
+    """
+
     data['comment_text'] = (data['comment_text'].swifter.apply
                             (lambda x: x.replace('i m ', 'i am ')))
     data['comment_text'] = (data['comment_text'].swifter.apply
@@ -280,7 +360,16 @@ def replace_halfwords(data):
 
 
 def replace_three(word_list):
-    """Replaces letters that appear more than three times in a row"""
+    """
+    Replaces letters that appear more than three times in a row.
+
+    Parameters:
+    word_list (list): list of words for datapoint
+
+    Returns:
+    new_list (list): updated list of words for datapoint.
+    """
+
     pattern = re.compile(r"(.)\1{2,}", re.DOTALL)
     new_list = []
     for word in word_list:
@@ -289,81 +378,117 @@ def replace_three(word_list):
     return new_list
 
 
-def misspelled(x_list):
-    """Changes some misspelled words"""
+def misspelled(word_list):
+    """
+    Changes some misspelled words.
+
+    Parameters:
+    word_list (list): list of words for datapoint
+
+    Returns:
+    new_list (list): updated list of words for datapoint.
+    """
+
     newlist = []
-    for x_val in x_list:
-        if x_val == 'bicthes':
+    for word in word_list:
+        if word == 'bicthes':
             newlist.append('bitches')
-        elif x_val == 'fukin':
+        elif word == 'fukin':
             newlist.append('fucking')
-        elif x_val == 'fectless':
+        elif word == 'fectless':
             newlist.append('feckless')
-        elif x_val == 'trustworhiness':
+        elif word == 'trustworhiness':
             newlist.append('trustworthiness')
-        elif x_val == 'awfucl':
+        elif word == 'awfucl':
             newlist.append('awful')
-        elif x_val == 'sextiimg':
+        elif word == 'sextiimg':
             newlist.append('sexting')
-        elif x_val == 'licemse':
+        elif word == 'licemse':
             newlist.append('license')
-        elif x_val == 'http':
+        elif word == 'http':
             newlist.append('')
-        elif x_val == 'ww':
+        elif word == 'ww':
             newlist.append('')
         else:
-            newlist.append(x_val)
+            newlist.append(word)
     return newlist
 
 
-def misspelled2(x_list):
-    """Changes some misspelled words"""
+def misspelled2(word_list):
+    """
+    Changes some misspelled words.
+
+    Parameters:
+    word_list (list): list of words for datapoint
+
+    Returns:
+    new_list (list): updated list of words for datapoint.
+    """
+
     newlist = []
-    for x_val in x_list:
-        if x_val == 'fking':
+    for word in word_list:
+        if word == 'fking':
             newlist.append('fucking')
-        elif x_val == 'fk':
+        elif word == 'fk':
             newlist.append('fucking')
-        elif x_val == 'hizbollah':
+        elif word == 'hizbollah':
             newlist.append('hezbollah')
-        elif x_val == 'muticultural':
+        elif word == 'muticultural':
             newlist.append('multicultural')
-        elif x_val == 'whatbdo':
+        elif word == 'whatbdo':
             newlist.append('what do')
-        elif x_val == 'mcinness':
+        elif word == 'mcinness':
             newlist.append('mcinnes')
-        elif x_val == 'fundelmendalist':
+        elif word == 'fundelmendalist':
             newlist.append('fundamentalist')
-        elif x_val == 'cacusion':
+        elif word == 'cacusion':
             newlist.append('caucasian')
         else:
-            newlist.append(x_val)
+            newlist.append(word)
     return newlist
 
 
-def misspelled3(x_list):
-    """Changes some misspelled words"""
+def misspelled3(word_list):
+    """
+    Changes some misspelled words.
+
+    Parameters:
+    word_list (list): list of words for datapoint
+
+    Returns:
+    new_list (list): updated list of words for datapoint.
+    """
+
     newlist = []
-    for x_val in x_list:
-        if x_val == 'puertoricans':
+    for word in word_list:
+        if word == 'puertoricans':
             newlist.append('puerto ricans')
-        elif x_val == 'withba':
+        elif word == 'withba':
             newlist.append('with a')
-        elif x_val == 'foxnew':
+        elif word == 'foxnew':
             newlist.append('fox news')
-        elif x_val == 'blelow':
+        elif word == 'blelow':
             newlist.append('below')
-        elif x_val == 'fanclub':
+        elif word == 'fanclub':
             newlist.append('fan club')
-        elif x_val == 'aswer':
+        elif word == 'aswer':
             newlist.append('answer')
         else:
-            newlist.append(x_val)
+            newlist.append(word)
     return newlist
 
 
 def corrections(data):
-    """Corrects some misspellings"""
+    """
+    Runs functions 'misspelled1', 'misspelled2', and 'misspelled3'.
+
+    Parameters:
+    data: feature variable database
+
+    Returns:
+    data: feature variable database with updated 'comment_text' feature.
+    """
+
     data['comment_text'] = (data['comment_text'].swifter.apply
                             (lambda x: replace_three(x)))
     data['comment_text'] = (data['comment_text'].swifter.apply
@@ -377,8 +502,23 @@ def corrections(data):
     return data
 
 
-def remove_nulls():
-    """Removes comments with null values after loading, updates data"""
+def load_cleaned():
+    """
+    Loads cleaned data.
+
+    Loads data, removes comments with null values after loading,
+    updates data.
+
+    Parameters:
+    data: feature variable database
+
+    Returns:
+    feature: feature variable database with rows containing null values
+             removed.
+    target: target variable database with rows containing null values
+            removed.
+    """
+
     features = pd.read_csv('features.csv')
     target = pd.read_csv('target.csv')
     data = pd.concat([target, features], axis=1)
@@ -393,9 +533,20 @@ def remove_nulls():
 
 
 def clean1():
-    """Reduces overall dataset to the data with group
+    """
+    First part of data cleaning functions.
+
+    Reduces overall dataset to the data with group
     annotations, reduces memory usage, splits to target
-    and features."""
+    and features, and uploads 'target' dataset.
+
+    Parameters:
+    none
+
+    Returns:
+    features: feature variable database.
+    """
+
     data = pd.read_csv('train_bias.csv')
     data = f.reduce_mem_usage(data)
     data = annotated(data)
@@ -408,7 +559,21 @@ def clean1():
 
 
 def clean():
-    """Cleans comments for tokenizing"""
+    """
+    Second part of data cleaning functions.
+
+    Cleans comments for tokenizing. Saves 'features' dataset.
+    Reloads 'features' and 'target' datasets, and removes any
+    datapoints with null data.
+
+    Parameters:
+    none
+
+    Returns:
+    features: feature variable database.
+    target: target database.
+    """
+
     features = clean1()
     features = column_change(features)
     features = comments_obscene(features)
@@ -424,5 +589,5 @@ def clean():
     features = rejoin(features)
     features = whitespace(features)
     features.to_csv('features.csv', index=False)
-    features, target = remove_nulls()
+    features, target = load_cleaned()
     return features, target
