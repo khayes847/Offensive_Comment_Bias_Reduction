@@ -89,6 +89,15 @@ def xyvalues():
     return x_val, y_val
 
 
+def train_test(x_val, y_val, test=.33, rs_val=42):
+    """Seperates values into train and test data"""
+    x_train, x_test, y_train, y_test = train_test_split(x_val, y_val,
+                                                        test_size=test,
+                                                        random_state=rs_val,
+                                                        stratify=y_val)
+    return x_train, x_test, y_train, y_test
+
+
 def test_data_group(model, y_test, x_val, y_val, vectorize=True):
     """Returns test section with group classification for
     initial logistic regression"""
@@ -107,6 +116,27 @@ def test_data_group(model, y_test, x_val, y_val, vectorize=True):
     return clean_group_data, y_group
 
 
+def vectorize_initial(x_train, x_test):
+    """Creates count vectorizer model, fits it to the X_train dataset, and
+    transforms the X train and test datasets."""
+    stopwords_set = set(stopwords.words('english'))
+    clean_train_data = []
+    for traindata in x_train['comment_text']:
+        clean_train_data.append(traindata)
+    clean_test_data = []
+    for testdata in x_test['comment_text']:
+        clean_test_data.append(testdata)
+    vectorizer = CountVectorizer(analyzer="word",
+                                 tokenizer=None,
+                                 preprocessor=None,
+                                 stop_words=stopwords_set,
+                                 max_features=6000,
+                                 ngram_range=(1, 3))
+    train_features = vectorizer.fit_transform(clean_train_data)
+    test_features = vectorizer.transform(clean_test_data)
+    return vectorizer, train_features, test_features
+
+
 def keras_group(x_test, y_test):
     """Returns identity section of test labelled as group comments
     for keras analysis"""
@@ -116,15 +146,6 @@ def keras_group(x_test, y_test):
     x_group = data[['comment_text']]
     y_group = data['offensive_and_identity']
     return x_group, y_group
-
-
-def train_test(x_val, y_val, test=.33, rs_val=42):
-    """Seperates values into train and test data"""
-    x_train, x_test, y_train, y_test = train_test_split(x_val, y_val,
-                                                        test_size=test,
-                                                        random_state=rs_val,
-                                                        stratify=y_val)
-    return x_train, x_test, y_train, y_test
 
 
 def scores(y_test, y_pred):
@@ -204,27 +225,6 @@ def visualize_training_results(results):
     plt.xlabel('Epochs')
     plt.ylabel('F1 Scores')
     plt.show()
-
-
-def vectorize_initial(x_train, x_test):
-    """Creates count vectorizer model, fits it to the X_train dataset, and
-    transforms the X train and test datasets."""
-    stopwords_set = set(stopwords.words('english'))
-    clean_train_data = []
-    for traindata in x_train['comment_text']:
-        clean_train_data.append(traindata)
-    clean_test_data = []
-    for testdata in x_test['comment_text']:
-        clean_test_data.append(testdata)
-    vectorizer = CountVectorizer(analyzer="word",
-                                 tokenizer=None,
-                                 preprocessor=None,
-                                 stop_words=stopwords_set,
-                                 max_features=6000,
-                                 ngram_range=(1, 3))
-    train_features = vectorizer.fit_transform(clean_train_data)
-    test_features = vectorizer.transform(clean_test_data)
-    return vectorizer, train_features, test_features
 
 
 def log_gridsearch(train_features, y_train):

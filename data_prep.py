@@ -20,6 +20,33 @@ def annotated(data):
     return data
 
 
+def identities(data):
+    """
+    Categorizes whether an identity is mentioned in each comment.
+
+    Each 'identity_list' column refers a specific identity group, with each
+    value representing the percentage of annotators believing the comment
+    to refer to the identity group. Function categorizes values >= 0.15 as
+    positive identification, and classifies comments based on whether any
+    identity groups have been positively identified.
+
+    Parameters:
+    data: feature variable database.
+
+    Returns:
+    data: feature variable database with updated 'groups' feature.
+    """
+
+    identity_list = list((data.iloc[:, 8:32]).columns)
+    for iden in identity_list:
+        data[f'{iden}'] = data[iden].swifter.apply(lambda x: x if x >= 0.15
+                                                   else 0)
+    data['groups'] = data[identity_list].sum(axis=1)
+    data['groups'] = data.groups.swifter.apply(lambda x: 0 if x == 0 else 1)
+    data = data.drop(columns=identity_list)
+    return data
+
+
 def target_grouping(row):
     """
     Creates new target incorporating identities.
@@ -48,33 +75,6 @@ def target_grouping(row):
         return val
     val = 3
     return val
-
-
-def identities(data):
-    """
-    Categorizes whether an identity is mentioned in each comment.
-
-    Each 'identity_list' column refers a specific identity group, with each
-    value representing the percentage of annotators believing the comment
-    to refer to the identity group. Function categorizes values >= 0.15 as
-    positive identification, and classifies comments based on whether any
-    identity groups have been positively identified.
-
-    Parameters:
-    data: feature variable database.
-
-    Returns:
-    data: feature variable database with updated 'groups' feature.
-    """
-
-    identity_list = list((data.iloc[:, 8:32]).columns)
-    for iden in identity_list:
-        data[f'{iden}'] = data[iden].swifter.apply(lambda x: x if x >= 0.15
-                                                   else 0)
-    data['groups'] = data[identity_list].sum(axis=1)
-    data['groups'] = data.groups.swifter.apply(lambda x: 0 if x == 0 else 1)
-    data = data.drop(columns=identity_list)
-    return data
 
 
 def target_cols(data):
