@@ -43,8 +43,6 @@ Existing offensive speech detection models often learn to categorize discussion 
 
 * __target.csv__ - The cleaned target variables.
 
-* __target.csv__ - The cleaned feature variables.
-
 * __presentation.pptx__ - a presentation detailing the project and its results.
 
 * __presentation.pdf__ - a presentation detailing the project and its results (in pdf form).
