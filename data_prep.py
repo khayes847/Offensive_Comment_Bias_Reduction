@@ -12,7 +12,15 @@ import functions as f
 
 # pylint: disable=unnecessary-lambda
 def annotated(data):
-    """Drops non-annotated data."""
+    """
+    Drops non-annotated data.
+    
+    Parameters:
+    data: feature variable database.
+
+    Returns:
+    data: feature variable database with updated 'groups' feature.
+    """
 
     data = data.loc[~(data.asian.isna())]
     data = data.loc[~(data.comment_text.isna())]
